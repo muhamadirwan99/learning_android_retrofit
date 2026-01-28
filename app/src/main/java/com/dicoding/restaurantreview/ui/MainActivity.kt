@@ -1,8 +1,10 @@
 package com.dicoding.restaurantreview.ui
 
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -12,6 +14,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.bumptech.glide.Glide
 import com.dicoding.restaurantreview.R
 import com.dicoding.restaurantreview.data.response.CustomerReviewsItem
+import com.dicoding.restaurantreview.data.response.PostReviewResponse
 import com.dicoding.restaurantreview.data.response.Restaurant
 import com.dicoding.restaurantreview.data.response.RestaurantResponse
 import com.dicoding.restaurantreview.data.retrofit.ApiConfig
@@ -51,6 +54,13 @@ class MainActivity : AppCompatActivity() {
 
 
         findRestaurant()
+
+        binding.btnSend.setOnClickListener { view ->
+            postReview(binding.edReview.text.toString())
+
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(view.windowToken, 0)
+        }
     }
 
     private fun findRestaurant() {
@@ -65,10 +75,10 @@ class MainActivity : AppCompatActivity() {
             ) {
                 showLoading(false)
 
-                if (response.isSuccessful){
+                if (response.isSuccessful) {
                     val responseBody = response.body()
 
-                    if (responseBody != null){
+                    if (responseBody != null) {
                         setRestaurantData(responseBody.restaurant)
                         setReviewData(responseBody.restaurant.customerReviews)
                     }
@@ -88,7 +98,7 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    private fun setRestaurantData(restaurant: Restaurant){
+    private fun setRestaurantData(restaurant: Restaurant) {
         binding.tvTitle.text = restaurant.name
         binding.tvDescription.text = restaurant.description
 
@@ -97,7 +107,7 @@ class MainActivity : AppCompatActivity() {
             .into(binding.ivPicture)
     }
 
-    private fun setReviewData(consumerReviews: List<CustomerReviewsItem>){
+    private fun setReviewData(consumerReviews: List<CustomerReviewsItem>) {
         val adapter = ReviewAdapter()
         adapter.submitList(consumerReviews)
         binding.rvReview.adapter = adapter
@@ -105,11 +115,41 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showLoading(isLoading: Boolean) {
-        if (isLoading){
+        if (isLoading) {
             binding.progressBar.visibility = View.VISIBLE
         } else {
             binding.progressBar.visibility = View.GONE
         }
 
+    }
+
+    private fun postReview(review: String) {
+        showLoading(true)
+
+        val client = ApiConfig.getApiService().postReview(RESTAURANT_ID, "Dicoding", review)
+        client.enqueue(object : Callback<PostReviewResponse> {
+            override fun onResponse(
+                call: Call<PostReviewResponse?>,
+                response: Response<PostReviewResponse?>
+            ) {
+                showLoading(false)
+
+                val responseBody = response.body()
+
+                if (response.isSuccessful && responseBody != null) {
+                    setReviewData(responseBody.customerReviews)
+                } else {
+                    Log.e(TAG, "onFailure: ${response.message()}")
+                }
+            }
+
+            override fun onFailure(
+                call: Call<PostReviewResponse?>,
+                t: Throwable
+            ) {
+                showLoading(false)
+                Log.e(TAG, "onFailure: ${t.message}")
+            }
+        })
     }
 }
