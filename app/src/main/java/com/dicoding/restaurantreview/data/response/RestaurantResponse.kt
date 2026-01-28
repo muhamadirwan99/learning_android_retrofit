@@ -2,6 +2,8 @@ package com.dicoding.restaurantreview.data.response
 
 import com.google.gson.annotations.SerializedName
 
+// Data class untuk response API saat mengambil detail restaurant
+// @SerializedName: mapping nama field JSON ke property Kotlin
 data class RestaurantResponse(
 
 	@field:SerializedName("restaurant")
@@ -14,6 +16,7 @@ data class RestaurantResponse(
 	val message: String
 )
 
+// Data class untuk merepresentasikan satu item review dari customer
 data class CustomerReviewsItem(
 
 	@field:SerializedName("date")
@@ -26,6 +29,7 @@ data class CustomerReviewsItem(
 	val name: String
 )
 
+// Data class untuk merepresentasikan data restaurant lengkap
 data class Restaurant(
 
 	@field:SerializedName("customerReviews")
@@ -37,6 +41,7 @@ data class Restaurant(
 	@field:SerializedName("name")
 	val name: String,
 
+	// rating menggunakan tipe Any karena bisa berupa String atau Number dari API
 	@field:SerializedName("rating")
 	val rating: Any,
 
@@ -47,6 +52,8 @@ data class Restaurant(
 	val id: String
 )
 
+// Data class untuk response API saat POST review baru
+// Server mengembalikan list review terbaru setelah review ditambahkan
 data class PostReviewResponse(
 
     @field:SerializedName("customerReviews")
