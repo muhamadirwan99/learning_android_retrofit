@@ -9,6 +9,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.get
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.bumptech.glide.Glide
@@ -32,6 +34,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         // Tag untuk logging, memudahkan filter log di Logcat
         private const val TAG = "MainActivity"
+
         // ID restaurant yang akan ditampilkan (hardcoded untuk demo)
         private const val RESTAURANT_ID = "uewq1zg2zlskfw1e867"
     }
@@ -54,6 +57,13 @@ class MainActivity : AppCompatActivity() {
         // Menyembunyikan action bar untuk tampilan yang lebih clean
         supportActionBar?.hide()
 
+        val mainViewModel = ViewModelProvider(this, ViewModelProvider.NewInstanceFactory()).get<MainViewModel>(
+            MainViewModel::class.java
+        )
+        mainViewModel.restaurant.observe(this) { restaurant ->
+            setRestaurantData(restaurant)
+        }
+
         // Mengatur RecyclerView agar menampilkan list review secara vertikal
         val layoutManager = LinearLayoutManager(this)
         binding.rvReview.layoutManager = layoutManager
@@ -63,12 +73,18 @@ class MainActivity : AppCompatActivity() {
         binding.rvReview.addItemDecoration(itemDecoration)
 
         // Memanggil API untuk mengambil data restaurant dan review saat aplikasi pertama kali dibuka
-        findRestaurant()
+        mainViewModel.listReview.observe(this) { consumerReviews ->
+            setReviewData(consumerReviews)
+        }
+
+        mainViewModel.isLoading.observe(this) {
+            showLoading(it)
+        }
 
         // Menangani aksi ketika tombol kirim review ditekan
         binding.btnSend.setOnClickListener { view ->
             // Mengirim review ke server dengan isi dari input text user
-            postReview(binding.edReview.text.toString())
+            mainViewModel.postReview(binding.edReview.text.toString())
 
             // Menyembunyikan keyboard setelah tombol kirim ditekan agar UI lebih bersih
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
@@ -76,51 +92,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun findRestaurant() {
-        // Menampilkan loading indicator karena proses request ke server butuh waktu
-        showLoading(true)
-
-        // Membuat request ke API untuk mendapatkan detail restaurant berdasarkan ID
-        val client = ApiConfig.getApiService().getRestaurant(RESTAURANT_ID)
-
-        // Menjalankan request secara asynchronous agar tidak memblokir UI thread
-        client.enqueue(object : Callback<RestaurantResponse> {
-            override fun onResponse(
-                call: Call<RestaurantResponse?>,
-                response: Response<RestaurantResponse?>
-            ) {
-                // Menyembunyikan loading karena response sudah diterima (berhasil atau gagal)
-                showLoading(false)
-
-                // Mengecek apakah response dari server berhasil (status code 200-299)
-                if (response.isSuccessful) {
-                    val responseBody = response.body()
-
-                    // Memastikan data yang diterima tidak null sebelum digunakan
-                    if (responseBody != null) {
-                        // Menampilkan informasi restaurant (nama, gambar, deskripsi)
-                        setRestaurantData(responseBody.restaurant)
-                        // Menampilkan daftar review dari customer lain
-                        setReviewData(responseBody.restaurant.customerReviews)
-                    }
-                } else {
-                    // Mencatat error ke Logcat jika request gagal untuk debugging
-                    Log.e(TAG, "onFailure: ${response.message()}")
-                }
-            }
-
-            override fun onFailure(
-                call: Call<RestaurantResponse?>,
-                t: Throwable
-            ) {
-                // Menyembunyikan loading jika terjadi error koneksi
-                showLoading(false)
-                // Mencatat detail error (misal: no internet, timeout) untuk debugging
-                Log.e(TAG, "onFailure: ${t.message}")
-            }
-        })
-
-    }
 
     private fun setRestaurantData(restaurant: Restaurant) {
         // Menampilkan nama restaurant di TextView
@@ -153,45 +124,5 @@ class MainActivity : AppCompatActivity() {
         } else {
             binding.progressBar.visibility = View.GONE
         }
-
-    }
-
-    private fun postReview(review: String) {
-        // Menampilkan loading saat mengirim review ke server
-        showLoading(true)
-
-        // Membuat request POST untuk mengirim review baru ke API
-        // Parameter: ID restaurant, nama user (hardcoded), dan isi review
-        val client = ApiConfig.getApiService().postReview(RESTAURANT_ID, "Dicoding", review)
-        client.enqueue(object : Callback<PostReviewResponse> {
-            override fun onResponse(
-                call: Call<PostReviewResponse?>,
-                response: Response<PostReviewResponse?>
-            ) {
-                // Menyembunyikan loading setelah mendapat response dari server
-                showLoading(false)
-
-                val responseBody = response.body()
-
-                // Jika review berhasil dikirim, update tampilan dengan list review terbaru
-                if (response.isSuccessful && responseBody != null) {
-                    // Server mengirim kembali semua review termasuk yang baru ditambahkan
-                    setReviewData(responseBody.customerReviews)
-                } else {
-                    // Mencatat error jika pengiriman review gagal
-                    Log.e(TAG, "onFailure: ${response.message()}")
-                }
-            }
-
-            override fun onFailure(
-                call: Call<PostReviewResponse?>,
-                t: Throwable
-            ) {
-                // Menyembunyikan loading jika terjadi error koneksi saat POST review
-                showLoading(false)
-                // Mencatat detail error untuk debugging
-                Log.e(TAG, "onFailure: ${t.message}")
-            }
-        })
     }
 }
