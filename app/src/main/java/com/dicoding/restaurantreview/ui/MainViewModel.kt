@@ -9,6 +9,7 @@ import com.dicoding.restaurantreview.data.response.PostReviewResponse
 import com.dicoding.restaurantreview.data.response.Restaurant
 import com.dicoding.restaurantreview.data.response.RestaurantResponse
 import com.dicoding.restaurantreview.data.retrofit.ApiConfig
+import com.dicoding.restaurantreview.util.Event
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -39,6 +40,15 @@ class MainViewModel : ViewModel() {
     // Public LiveData untuk status loading yang diobserve oleh ProgressBar
     // true = show loading, false = hide loading
     val isLoading: LiveData<Boolean> = _isLoading
+
+    // Private MutableLiveData untuk snackbar message dengan Event wrapper
+    // Kenapa Event wrapper? Untuk mencegah Snackbar muncul berulang kali saat configuration change
+    // Event wrapper memastikan pesan hanya ditampilkan sekali (one-time event)
+    private val _snackbarText = MutableLiveData<Event<String>>()
+
+    // Public LiveData untuk snackbar message yang diobserve oleh Activity
+    // Event<String> akan di-consume hanya sekali, tidak akan trigger lagi saat rotasi layar
+    val snackbarText : LiveData<Event<String>> = _snackbarText
 
     companion object {
         // TAG untuk logging, memudahkan filter di Logcat saat debugging
@@ -144,6 +154,11 @@ class MainViewModel : ViewModel() {
                     // Kenapa server return semua? Agar client tidak perlu merge manual old + new review
                     // Begitu di-set, LiveData akan notify observer → RecyclerView auto-refresh
                     _listReview.value = responseBody.customerReviews
+
+                    // Mengirim pesan sukses ke UI melalui Event wrapper
+                    // Event wrapper memastikan Snackbar hanya muncul sekali, tidak muncul lagi saat rotasi
+                    // responseBody.message biasanya berisi "success" atau pesan konfirmasi dari server
+                    _snackbarText.value = Event(responseBody.message.toString())
                 } else {
                     // Mencatat error jika pengiriman review gagal
                     // Bisa karena validation error (review kosong), server error, dll

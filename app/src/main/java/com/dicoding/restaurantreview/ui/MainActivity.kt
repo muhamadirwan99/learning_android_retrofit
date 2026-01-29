@@ -21,6 +21,7 @@ import com.dicoding.restaurantreview.data.response.Restaurant
 import com.dicoding.restaurantreview.data.response.RestaurantResponse
 import com.dicoding.restaurantreview.data.retrofit.ApiConfig
 import com.dicoding.restaurantreview.databinding.ActivityMainBinding
+import com.google.android.material.snackbar.Snackbar
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -89,6 +90,20 @@ class MainActivity : AppCompatActivity() {
         // Memberikan feedback visual ke user bahwa aplikasi sedang memproses request
         mainViewModel.isLoading.observe(this) {
             showLoading(it)
+        }
+
+        // Mengobservasi snackbar message dari ViewModel menggunakan Event wrapper
+        // Kenapa pakai Event wrapper? Karena LiveData bersifat "sticky" - value terakhir akan dikirim ulang
+        // Masalah: Saat rotasi layar, observer dipanggil lagi dan Snackbar muncul lagi (behavior tidak diinginkan)
+        // Solusi: Event wrapper dengan flag "hasBeenHandled" untuk one-time consumption
+        mainViewModel.snackbarText.observe(this){
+            // getContentIfNotHandled() akan return null jika event sudah pernah di-handle
+            // Kenapa? Agar Snackbar hanya muncul sekali, tidak muncul lagi saat rotasi atau re-observe
+            it.getContentIfNotHandled()?.let {snackbarText ->
+                // Menampilkan Snackbar di root view dengan pesan dari server (misal: "success")
+                // window.decorView.rootView digunakan agar Snackbar muncul di seluruh layar
+                Snackbar.make(window.decorView.rootView, snackbarText, Snackbar.LENGTH_SHORT).show()
+            }
         }
 
         // Menangani aksi ketika tombol kirim review ditekan

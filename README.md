@@ -27,6 +27,8 @@ com.dicoding.restaurantreview/
 │   └── retrofit/
 │       ├── ApiConfig.kt         # Konfigurasi Retrofit
 │       └── ApiService.kt        # Interface endpoint API
+├── util/
+│   └── Event.kt                 # Event wrapper untuk one-time events
 ```
 
 ### Komponen Utama
@@ -92,6 +94,14 @@ Data class untuk merepresentasikan response API:
 - `CustomerReviewsItem`: Model data satu review
 - `PostReviewResponse`: Response POST review baru
 
+#### 7. Event.kt
+Event wrapper class untuk menangani one-time events di LiveData:
+- Mengatasi masalah LiveData "sticky" yang re-deliver value saat rotasi
+- `hasBeenHandled`: Flag untuk track apakah event sudah di-consume
+- `getContentIfNotHandled()`: Ambil content hanya jika belum handled
+- `peekContent()`: Cek content tanpa mengubah status handled
+- Use case: Snackbar messages, navigation events, one-time actions
+
 ## 🛠️ Teknologi yang Digunakan
 
 ### Libraries & Dependencies
@@ -156,6 +166,141 @@ View (Activity) <--> ViewModel <--> Model (API/Repository)
 3. ViewModel otomatis call `findRestaurant()` di `init{}`
 4. API response → ViewModel update `LiveData`
 5. LiveData notify observer → MainActivity update UI
+
+### Event Wrapper Pattern untuk One-Time Events
+
+#### 🎯 Masalah yang Dipecahkan
+
+LiveData bersifat **"sticky"** - value terakhir akan dikirim ulang ke observer baru:
+
+```
+User post review → Snackbar "success" muncul
+        ↓
+User rotasi layar → Activity destroyed & recreated
+        ↓
+Observer di-create ulang → Menerima value terakhir dari LiveData
+        ↓
+Snackbar "success" MUNCUL LAGI ❌ (tidak diinginkan!)
+```
+
+**Kenapa ini masalah?**
+- Snackbar/Toast seharusnya one-time event
+- Navigation events tidak boleh trigger ulang saat rotasi
+- Duplicate actions (misal: payment di-submit dua kali)
+
+#### ✅ Solusi: Event Wrapper Class
+
+```kotlin
+class Event<out T>(private val content: T) {
+    var hasBeenHandled = false
+        private set
+    
+    fun getContentIfNotHandled(): T? {
+        return if (hasBeenHandled) {
+            null  // Event sudah di-handle, return null
+        } else {
+            hasBeenHandled = true  // Tandai sebagai handled
+            content  // Return content pertama kali
+        }
+    }
+}
+```
+
+**Cara Kerja:**
+1. ViewModel emit `Event("success")` → hasBeenHandled = false
+2. Observer 1 panggil `getContentIfNotHandled()` → return "success", set hasBeenHandled = true
+3. Snackbar muncul pertama kali ✅
+4. User rotasi layar → Observer 2 dibuat
+5. Observer 2 panggil `getContentIfNotHandled()` → return null (sudah handled) ✅
+6. Snackbar TIDAK muncul lagi! 🎉
+
+#### 📝 Implementasi di Aplikasi
+
+**Di MainViewModel.kt:**
+```kotlin
+// Wrap String message dengan Event
+private val _snackbarText = MutableLiveData<Event<String>>()
+val snackbarText: LiveData<Event<String>> = _snackbarText
+
+fun postReview(review: String) {
+    // ... API call ...
+    if (response.isSuccessful && responseBody != null) {
+        _listReview.value = responseBody.customerReviews
+        _snackbarText.value = Event(responseBody.message)  // Wrap dengan Event
+    }
+}
+```
+
+**Di MainActivity.kt:**
+```kotlin
+mainViewModel.snackbarText.observe(this) { event ->
+    // getContentIfNotHandled() return null jika sudah handled
+    event.getContentIfNotHandled()?.let { snackbarText ->
+        Snackbar.make(window.decorView.rootView, snackbarText, Snackbar.LENGTH_SHORT).show()
+    }
+}
+```
+
+#### 🔍 Kapan Menggunakan Event Wrapper?
+
+**✅ GUNAKAN Event Wrapper untuk:**
+- Snackbar/Toast messages
+- Navigation events (pindah ke screen lain)
+- Dialog show/hide events
+- One-time actions (payment, logout, dll)
+
+**❌ JANGAN gunakan Event Wrapper untuk:**
+- Data yang perlu persisten (list, text, state)
+- Data yang boleh di-deliver ulang ke observer baru
+- UI state yang harus restore setelah rotasi
+
+#### 📊 Perbandingan: LiveData Biasa vs Event Wrapper
+
+| Aspek | LiveData<String> | LiveData<Event<String>> |
+|-------|------------------|-------------------------|
+| **Re-delivery saat rotasi** | ✅ Ya (sticky) | ❌ Tidak (one-time) |
+| **Use Case** | UI state, data | Actions, messages |
+| **Snackbar behavior** | Muncul berulang ❌ | Muncul sekali ✅ |
+| **Navigation** | Navigate berulang ❌ | Navigate sekali ✅ |
+
+#### 🎨 Analogi dengan Flutter
+
+**Android Event Wrapper ≈ Flutter Command/Action Pattern**
+
+```dart
+// Flutter equivalent dengan ValueNotifier + Command
+class ReviewViewModel extends ChangeNotifier {
+  // Untuk actions/events
+  final showSnackbarCommand = ValueNotifier<String?>(null);
+  
+  void postReview(String review) {
+    // ... API call ...
+    showSnackbarCommand.value = "Success!";
+    // Reset setelah di-handle
+    Future.microtask(() => showSnackbarCommand.value = null);
+  }
+}
+
+// Di widget
+ValueListenableBuilder<String?>(
+  valueListenable: viewModel.showSnackbarCommand,
+  builder: (context, message, child) {
+    if (message != null) {
+      // Show snackbar once
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+      });
+    }
+    return Container();
+  },
+)
+```
+
+Atau dengan **BLoC pattern**:
+- Android Event Wrapper ≈ Flutter **Stream** (not replay)
+- Android LiveData ≈ Flutter **BehaviorSubject** (replay last value)
 
 ### LiveData Observer Pattern
 
@@ -448,13 +593,14 @@ Log.e(TAG, "onFailure: ${response.message()}")
 1. ✅ **MVVM Architecture**: Separation of concerns antara UI dan business logic
 2. ✅ **LiveData**: Reactive UI yang lifecycle-aware
 3. ✅ **ViewModel**: Data bertahan saat configuration change
-4. ✅ **View Binding**: Type-safe view access
-5. ✅ **ListAdapter**: Efficient list updates dengan DiffUtil
-6. ✅ **Retrofit**: Modern HTTP client untuk API
-7. ✅ **Glide**: Image loading dengan caching
-8. ✅ **Edge-to-Edge**: Modern UI dengan system bars handling
-9. ✅ **Loading States**: User feedback saat fetching data
-10. ✅ **Keyboard Management**: Auto-hide keyboard untuk better UX
+4. ✅ **Event Wrapper**: Menangani one-time events (Snackbar, navigation)
+5. ✅ **View Binding**: Type-safe view access
+6. ✅ **ListAdapter**: Efficient list updates dengan DiffUtil
+7. ✅ **Retrofit**: Modern HTTP client untuk API
+8. ✅ **Glide**: Image loading dengan caching
+9. ✅ **Edge-to-Edge**: Modern UI dengan system bars handling
+10. ✅ **Loading States**: User feedback saat fetching data
+11. ✅ **Keyboard Management**: Auto-hide keyboard untuk better UX
 
 ## 📄 License
 
