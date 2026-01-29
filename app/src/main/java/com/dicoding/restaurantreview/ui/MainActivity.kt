@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -32,6 +33,9 @@ class MainActivity : AppCompatActivity() {
     // Menggunakan View Binding untuk mengakses view tanpa findViewById (lebih aman dan efisien)
     private lateinit var binding: ActivityMainBinding
 
+    // Implementasi kotlin ktx (Activity KTX)
+    private val mainViewModel by viewModels<MainViewModel>()
+
     companion object {
         // Tag untuk logging, memudahkan filter log di Logcat
         private const val TAG = "MainActivity"
@@ -57,12 +61,6 @@ class MainActivity : AppCompatActivity() {
 
         // Menyembunyikan action bar untuk tampilan yang lebih clean
         supportActionBar?.hide()
-
-        // Membuat instance ViewModel yang akan bertahan meskipun configuration change (rotasi layar)
-        // ViewModel memisahkan logika bisnis dari UI, sehingga data tidak hilang saat rotasi
-        val mainViewModel = ViewModelProvider(this, ViewModelProvider.NewInstanceFactory()).get<MainViewModel>(
-            MainViewModel::class.java
-        )
 
         // Mengobservasi data restaurant dari ViewModel menggunakan LiveData
         // Setiap kali data restaurant berubah, UI akan otomatis update
